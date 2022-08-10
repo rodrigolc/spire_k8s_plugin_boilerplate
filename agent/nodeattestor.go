@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"sync"
 
 	"github.com/hashicorp/go-hclog"
@@ -10,6 +12,8 @@ import (
 	"github.com/spiffe/spire-plugin-sdk/pluginsdk"
 	nodeattestorv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/agent/nodeattestor/v1"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
+	"github.com/spiffe/spire/pkg/common/plugin/k8s"
+	"github.com/zeebo/errs"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -28,8 +32,9 @@ var (
 
 // Config defines the configuration for the plugin.
 // TODO: Add relevant configurables or remove if no configuration is required.
-type Config struct {
-	Codeword string `hcl:"codeword"`
+type Config struct {	
+	cluster string `hcl:"cluster"`
+	tokenPath string `hcl:"token_path"` 
 }
 
 // Plugin implements the NodeAttestor plugin
@@ -73,12 +78,25 @@ func (p *Plugin) AidAttestation(stream nodeattestorv1.NodeAttestor_AidAttestatio
 		return err
 	}
 
-	p.logger.Info("Attestation requested", "codeword", config.Codeword)
-	codeword := config.Codeword
+	p.logger.Info("Attestation requested")
+
+	token, err := loadTokenFromFile(config.tokenPath)
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "unable to load token from %s: %v", config.tokenPath, err)
+	}
+
+	payload, err := json.Marshal(k8s.PSATAttestationData{
+		Cluster: config.cluster,
+		Token:   token,
+	})
+
+	if err != nil {
+		return status.Errorf(codes.Internal, "unable to marshal PSAT token data: %v", err)
+	}
 
 	return stream.Send(&nodeattestorv1.PayloadOrChallengeResponse{
 		Data: &nodeattestorv1.PayloadOrChallengeResponse_Payload{
-			Payload: []byte(codeword),
+			Payload: payload,
 		},
 	})
 }
@@ -118,6 +136,17 @@ func (p *Plugin) getConfig() (*Config, error) {
 		return nil, status.Error(codes.FailedPrecondition, "not configured")
 	}
 	return p.config, nil
+}
+
+func loadTokenFromFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", errs.Wrap(err)
+	}
+	if len(data) == 0 {
+		return "", errs.New("%q is empty", path)
+	}
+	return string(data), nil
 }
 
 func main() {
