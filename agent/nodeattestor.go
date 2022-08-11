@@ -32,9 +32,9 @@ var (
 
 // Config defines the configuration for the plugin.
 // TODO: Add relevant configurables or remove if no configuration is required.
-type Config struct {	
-	cluster string `hcl:"cluster"`
-	tokenPath string `hcl:"token_path"` 
+type Config struct {
+	Cluster   string `hcl:"cluster"`
+	TokenPath string `hcl:"token_path"`
 }
 
 // Plugin implements the NodeAttestor plugin
@@ -80,13 +80,13 @@ func (p *Plugin) AidAttestation(stream nodeattestorv1.NodeAttestor_AidAttestatio
 
 	p.logger.Info("Attestation requested")
 
-	token, err := loadTokenFromFile(config.tokenPath)
+	token, err := loadTokenFromFile(config.TokenPath)
 	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "unable to load token from %s: %v", config.tokenPath, err)
+		return status.Errorf(codes.InvalidArgument, "unable to load token from %s: %v", config.TokenPath, err)
 	}
 
 	payload, err := json.Marshal(k8s.PSATAttestationData{
-		Cluster: config.cluster,
+		Cluster: config.Cluster,
 		Token:   token,
 	})
 
@@ -109,6 +109,10 @@ func (p *Plugin) Configure(ctx context.Context, req *configv1.ConfigureRequest) 
 	config := new(Config)
 	if err := hcl.Decode(config, req.HclConfiguration); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to decode configuration: %v", err)
+	}
+
+	if config.Cluster == "" {
+		return nil, status.Error(codes.InvalidArgument, "configuration missing cluster")
 	}
 
 	// TODO: Validate configuration before setting/replacing existing

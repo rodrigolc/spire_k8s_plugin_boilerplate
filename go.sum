@@ -155,6 +155,7 @@ github.com/Microsoft/go-winio v0.4.17-0.20210211115548-6eac466e5fa3/go.mod h1:JP
 github.com/Microsoft/go-winio v0.4.17-0.20210324224401-5516f17a5958/go.mod h1:JPGBdM1cNvN/6ISo+n8V5iA4v8pBzdOpzfwIujj1a84=
 github.com/Microsoft/go-winio v0.4.17/go.mod h1:JPGBdM1cNvN/6ISo+n8V5iA4v8pBzdOpzfwIujj1a84=
 github.com/Microsoft/go-winio v0.5.1/go.mod h1:JPGBdM1cNvN/6ISo+n8V5iA4v8pBzdOpzfwIujj1a84=
+github.com/Microsoft/go-winio v0.5.2 h1:a9IhgEQBCUEk6QCdml9CiJGhAws+YwffDHEMp1VMrpA=
 github.com/Microsoft/go-winio v0.5.2/go.mod h1:WpS1mjBmmwHBEWmogvA2mj8546UReBk4v8QkMxJ6pZY=
 github.com/Microsoft/hcsshim v0.8.6/go.mod h1:Op3hHsoHPAvb6lceZHDtd9OkTew38wNoXnJs8iY7rUg=
 github.com/Microsoft/hcsshim v0.8.7-0.20190325164909-8abdbb8205e4/go.mod h1:Op3hHsoHPAvb6lceZHDtd9OkTew38wNoXnJs8iY7rUg=
@@ -1351,6 +1352,7 @@ github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6Mwd
 github.com/sirupsen/logrus v1.6.0/go.mod h1:7uNnSEd1DgxDLC74fIahvMZmmYsHGZGEOFrfsX/uA88=
 github.com/sirupsen/logrus v1.7.0/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
 github.com/sirupsen/logrus v1.8.1/go.mod h1:yWOB1SBYBC5VeMP7gHvWumXLIWorT60ONWic61uBYv0=
+github.com/sirupsen/logrus v1.9.0 h1:trlNQbNUG3OdDrDil03MCb1H2o9nJ1x4/5LYw7byDE0=
 github.com/sirupsen/logrus v1.9.0/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
 github.com/smartystreets/assertions v1.0.0/go.mod h1:kHHU4qYBaI3q23Pp3VPrmWhuIUrLW/7eUrw0BU5VaoM=
@@ -1391,9 +1393,11 @@ github.com/spf13/viper v1.3.2/go.mod h1:ZiWeW+zYFKm7srdB9IoDzzZXaJaI5eL9QjNiN/DM
 github.com/spf13/viper v1.4.0/go.mod h1:PTJ7Z/lr49W6bUbkmS1V3by4uWynFiR9p7+dSq/yZzE=
 github.com/spf13/viper v1.7.0/go.mod h1:8WkrPz2fc9jxqZNCJI/76HCieCp4Q8HaLFoCha5qpdg=
 github.com/spf13/viper v1.8.1/go.mod h1:o0Pch8wJ9BVSWGQMbra6iw0oQ5oktSIBaujf1rJH9Ns=
+github.com/spiffe/go-spiffe/v2 v2.0.1-0.20220414143532-2ed460a8b9d3 h1:FpqM5PfWHs4Ze36HwzMpRefrv8kkmxFgtG9Qc6hL7Dc=
 github.com/spiffe/go-spiffe/v2 v2.0.1-0.20220414143532-2ed460a8b9d3/go.mod h1:ifsAYiK9MOyuGYFUHUQ3K47dj+k/gd4IcWhlCyDJZEU=
 github.com/spiffe/spire v1.4.0 h1:FVysDNy21oGr39nQ1jZlrUAtQuCJ33mTGGSbv74OlkA=
 github.com/spiffe/spire v1.4.0/go.mod h1:j07JomJnHaxXNhiwl8SPGNi+0klHkdTOmgUlb9biRds=
+github.com/spiffe/spire-api-sdk v1.2.2-0.20220317172821-e2705b35aa09 h1:2oavALIvyKv+M9Q2CWoz3UlJn4DT+oAhVO1qIgaq0GA=
 github.com/spiffe/spire-api-sdk v1.2.2-0.20220317172821-e2705b35aa09/go.mod h1:73BC0cOGkqRQrqoB1Djk7etxN+bE1ypmzZMkhCQs6kY=
 github.com/spiffe/spire-plugin-sdk v1.2.1/go.mod h1:fzNSP83Z848jZtPQYeZ9qPWZkbSPwmd/JFNux1gxsbM=
 github.com/spiffe/spire-plugin-sdk v1.3.3 h1:ddI0APyDKhiAh4i4nDQ4ris0NHsiMI0MKK/YTXeEcB8=
