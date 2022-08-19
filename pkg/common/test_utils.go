@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/spiffe/spire/pkg/agent/plugin/nodeattestor/tpmdevid/tpmutil"
 	"github.com/spiffe/spire/pkg/common/pemutil"
 	sat_common "github.com/spiffe/spire/pkg/common/plugin/k8s"
 	"github.com/spiffe/spire/test/tpmsimulator"
@@ -35,15 +34,9 @@ pG3eEhiqPxE++QHpwU78O+F1GznOPBvpZOB3GfyjNQ==
 	DevID                 *tpmsimulator.Credential
 	DevIDBundlePath       string
 	EndorsementBundlePath string
-	TPMDevicePath         = "/dev/tpmrm0"
 	DevIDCertPath         string
 	DevIDPrivPath         string
 	DevIDPubPath          string
-	TPMPasswords          = tpmutil.TPMPasswords{
-		EndorsementHierarchy: "endorsement-hierarchy-pass",
-		OwnerHierarchy:       "owner-hierarchy-pass",
-		DevIDKey:             "devid-pass",
-	}
 )
 
 // PSATData helps move PSAT data around
