@@ -2,13 +2,11 @@ package common
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"testing"
 
 	"github.com/spiffe/spire/pkg/common/pemutil"
 	sat_common "github.com/spiffe/spire/pkg/common/plugin/k8s"
-	"github.com/spiffe/spire/test/tpmsimulator"
 	"github.com/stretchr/testify/require"
 	jose "gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
@@ -31,12 +29,7 @@ pG3eEhiqPxE++QHpwU78O+F1GznOPBvpZOB3GfyjNQ==
 	TrustDomain       = "domain.test"
 	TokenRelativePath = "/testing/path"
 
-	DevID                 *tpmsimulator.Credential
-	DevIDBundlePath       string
 	EndorsementBundlePath string
-	DevIDCertPath         string
-	DevIDPrivPath         string
-	DevIDPubPath          string
 )
 
 // PSATData helps move PSAT data around
@@ -74,29 +67,6 @@ func CreatePSAT(namespace, podName string) (string, error) {
 	}
 
 	return token, nil
-}
-
-// WriteDevIDFiles writes the DevID certificate, public and private keys into files
-func WriteDevIDFiles(t *testing.T, dir string) {
-	require.NotNil(t, DevID, "DevID must be set")
-
-	DevIDCertPath = path.Join(dir, "devid-certificate.pem")
-	DevIDPrivPath = path.Join(dir, "devid-priv-path")
-	DevIDPubPath = path.Join(dir, "devid-pub-path")
-
-	require.NoError(t, os.WriteFile(
-		DevIDCertPath,
-		DevID.ChainPem(),
-		0600),
-		"failed to write DevIDCertPath into file")
-	require.NoError(t, os.WriteFile(DevIDPrivPath,
-		DevID.PrivateBlob,
-		0600),
-		"failed to write DevIDPrivPath into file")
-	require.NoError(t, os.WriteFile(DevIDPubPath,
-		DevID.PublicBlob,
-		0600),
-		"failed to write DevIDPubPath into file")
 }
 
 // WriteToken writes the PSAT to a file at given path
