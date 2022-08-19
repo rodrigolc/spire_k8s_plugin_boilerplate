@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spiffe/spire-plugin-sdk/pluginsdk"
@@ -11,8 +14,13 @@ import (
 	nodeattestorv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/agent/nodeattestor/v1"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
 	"github.com/spiffe/spire-plugin-sdk/templates/agent/nodeattestor"
+	"github.com/spiffe/spire/pkg/common/pemutil"
+	"github.com/spiffe/spire/pkg/common/plugin/k8s"
+	sat_common "github.com/spiffe/spire/pkg/common/plugin/k8s"
 	"github.com/spiffe/spire/test/spiretest"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 var sampleKeyPEM = []byte(`-----BEGIN RSA PRIVATE KEY-----
@@ -28,11 +36,17 @@ RcY5rJxm48kUZ12Mr3cQ/kCYvftL7HkYR/4rewIxANdritlIPu4VziaEhYZg7dvz
 pG3eEhiqPxE++QHpwU78O+F1GznOPBvpZOB3GfyjNQ==
 -----END RSA PRIVATE KEY-----`)
 
+const (
+		podName = "MYPOD"
+		clusterName = "MYCLUSTER"
+)
+
 type attestorSuite struct {
 	agentPlugin         *Plugin
 	agentAttestorClient *agentnodeattestorv1.NodeAttestorPluginClient
 	agentHCL            string
 
+	psatData  *k8s.PSATAttestationData
 	token     string
 	tokenPath string
 
@@ -74,12 +88,10 @@ func (a *attestorSuite) loadAgentPlugin(agentHLC string) error {
 
 func (a *attestorSuite) createAndWriteToken() {
 	var err error
-	dir := a.t.TempDir()
-	//TODO: remove below line
-	dir = dir
-	//a.token, err = common.CreatePSAT(a.psatData.Namespace, a.psatData.PodName)
+	dir := "/temp/token"
+	a.token, err = createPSAT(clusterName, podName)
 	require.NoError(a.t, err)
-	//a.tokenPath = common.WriteToken(a.t, dir, common.TokenRelativePath, a.token)
+	a.tokenPath = dir
 }
 
 func loadAgent(t *testing.T) attestorSuite {
@@ -89,8 +101,75 @@ func loadAgent(t *testing.T) attestorSuite {
 		require: require.New(t),
 	}
 	a.createAndWriteToken()
-	a.require.NoError(a.loadAgentPlugin(""))
+	a.require.NoError(a.loadAgentPlugin(`token_path = "./token" cluster = "FOO"`))
 	return a
+}
+
+func loadTokenAgent(t *testing.T, tokenPath string) attestorSuite {
+	a := attestorSuite{
+		t: t,
+		//psatData: common.DefaultPSATData(),
+		require: require.New(t),
+	}
+	a.createAndWriteToken()
+	a.require.NoError(a.loadAgentPlugin(fmt.Sprintf(`token_path = "%s" cluster = "FOO"`, tokenPath)))
+	return a
+}
+
+// Creates a PSAT using the given namespace and podName (just for testing)
+func createPSAT(namespace, podName string) (string, error) {
+	// Create a jwt builder
+	s, err := createSigner()
+	if err != nil {
+		return "", err
+	}
+
+	builder := jwt.Signed(s)
+
+	// Set useful claims for testing
+	claims := sat_common.PSATClaims{}
+	claims.K8s.Namespace = namespace
+	claims.K8s.Pod.Name = podName
+	builder = builder.Claims(claims)
+
+	// Serialize and return token
+	token, err := builder.CompactSerialize()
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func createSigner() (jose.Signer, error) {
+	sampleKey, err := pemutil.ParseRSAPrivateKey(sampleKeyPEM)
+	if err != nil {
+		return nil, err
+	}
+
+	sampleSigner, err := jose.NewSigner(jose.SigningKey{
+		Algorithm: jose.RS256,
+		Key:       sampleKey,
+	}, nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return sampleSigner, nil
+}
+
+func (s *AttestorSuite) joinPath(path string) string {
+	return filepath.Join(s.dir, path)
+}
+
+func (s *AttestorSuite) writeValue(path, data string) string {
+	valuePath := s.joinPath(path)
+	err := os.MkdirAll(filepath.Dir(valuePath), 0755)
+	s.Require().NoError(err)
+	err = os.WriteFile(valuePath, []byte(data), 0600)
+	s.Require().NoError(err)
+	return valuePath
 }
 
 type AttestorSuite struct {
@@ -102,6 +181,44 @@ type AttestorSuite struct {
 func (s *AttestorSuite) SetupTest() {
 	s.dir = s.TempDir()
 }
+
+func TestAttestationSuccess(t *testing.T) {
+	a := loadAgent(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start attestation
+	agentStream, err := a.agentAttestorClient.AidAttestation(ctx)
+	a.require.NoError(err)
+
+	// Generate a challenge from the payload
+	agentResponse, err := agentStream.Recv()
+	a.require.NoError(err)
+
+	attestationData := new(k8s.PSATAttestationData)
+	err = json.Unmarshal(agentResponse.GetPayload(), attestationData)
+	a.require.Equal(a.token, attestationData.Token, "Expected token: %s got %s", a.token, attestationData.Token)
+	a.require.NoError(err)
+}
+
+// func TestAttestationWrongToken(t *testing.T) {
+// 	a := loadTokenAgent(t)
+// 	ctx, cancel := context.WithCancel(context.Background())
+// 	defer cancel()
+
+// 	// Start attestation
+// 	agentStream, err := a.agentAttestorClient.AidAttestation(ctx)
+// 	a.require.NoError(err)
+
+// 	// Generate a challenge from the payload
+// 	agentResponse, err := agentStream.Recv()
+// 	a.require.NoError(err)
+
+// 	attestationData := new(k8s.PSATAttestationData)
+// 	err = json.Unmarshal(agentResponse.GetPayload(), attestationData)
+// 	a.require.NotEqual(a.token, attestationData.Token, "Expected token: %s got %s", a.token, attestationData.Token)
+// 	a.require.NoError(err)
+// }
 
 func TestConfig(t *testing.T) {
 	tests := []struct {
@@ -145,6 +262,56 @@ func TestConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestAidAttestation(t *testing.T) {
+	tests := []struct {
+		name        string
+		tokenPath   string
+		expectedErr string
+	}{
+		{
+			name:        "Wrong token path",
+			tokenPath:   "./tokenn",
+			expectedErr: "unable to load token from",
+		},
+		{
+			name:        "Empty token",
+			tokenPath:   "./empty_token",
+			expectedErr: "unable to load token from",
+		},
+		{
+			name:        "Wrong token",
+			tokenPath:   "./wrongtoken",
+			expectedErr: "wrong token",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			a := loadTokenAgent(t, test.tokenPath)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Start attestation
+			agentStream, err := a.agentAttestorClient.AidAttestation(ctx)
+			a.require.NoError(err)
+
+			// Generate a challenge from the payload
+			agentResponse, err := agentStream.Recv()
+			if test.expectedErr != "" {
+				a.require.Error(err)
+				a.require.Contains(err, test.expectedErr)
+				return
+			}
+			a.require.NoError(err)
+			attestationData := new(k8s.PSATAttestationData)
+			err = json.Unmarshal(agentResponse.GetPayload(), attestationData)
+			a.require.NoError(err)
+			a.require.NotEqual(a.token, attestationData.Token, "Expected token: %s got %s", a.token, attestationData.Token)
+		})
+	}
+}
+
 func Test(t *testing.T) {
 	plugin := new(nodeattestor.Plugin)
 	naClient := new(agentnodeattestorv1.NodeAttestorPluginClient)
