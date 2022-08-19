@@ -10,7 +10,6 @@ import (
 	"github.com/spiffe/spire/pkg/common/pemutil"
 	sat_common "github.com/spiffe/spire/pkg/common/plugin/k8s"
 	"github.com/spiffe/spire/test/tpmsimulator"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	jose "gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
@@ -82,50 +81,6 @@ func CreatePSAT(namespace, podName string) (string, error) {
 	}
 
 	return token, nil
-}
-
-// SetupTPMSimulator performs a simple setup for the simulator
-func SetupTPMSimulator(t *testing.T) *tpmsimulator.TPMSimulator {
-	// Creates a new global TPM simulator
-	sim, err := tpmsimulator.New(TPMPasswords.EndorsementHierarchy, TPMPasswords.OwnerHierarchy)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		assert.NoError(t, sim.Close(), "unexpected error encountered closing simulator")
-	})
-
-	// Replace real openTPM with open simulator
-	tpmutil.OpenTPM = sim.OpenTPM
-
-	// Create a temporal directory to store configuration files
-	dir := t.TempDir()
-
-	// Create DevID with intermediate cert
-	provisioningCA, err := tpmsimulator.NewProvisioningCA(&tpmsimulator.ProvisioningConf{})
-	require.NoError(t, err)
-
-	DevID, err = sim.GenerateDevID(provisioningCA, tpmsimulator.RSA, TPMPasswords.DevIDKey)
-	require.NoError(t, err)
-
-	// Write files into temporal directory
-	WriteDevIDFiles(t, dir)
-
-	// Write provisioning root certificates into temp directory
-	DevIDBundlePath = path.Join(dir, "devid-provisioning-ca.pem")
-	require.NoError(t, os.WriteFile(
-		DevIDBundlePath,
-		pemutil.EncodeCertificate(provisioningCA.RootCert),
-		0600),
-	)
-
-	// Write endorsement root certificate into temp directory
-	EndorsementBundlePath = path.Join(dir, "endorsement-ca.pem")
-	require.NoError(t, os.WriteFile(
-		EndorsementBundlePath,
-		pemutil.EncodeCertificate(sim.GetEKRoot()),
-		0600),
-	)
-
-	return sim
 }
 
 // WriteDevIDFiles writes the DevID certificate, public and private keys into files
