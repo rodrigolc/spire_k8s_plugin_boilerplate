@@ -201,25 +201,6 @@ func TestAttestationSuccess(t *testing.T) {
 	a.require.NoError(err)
 }
 
-// func TestAttestationWrongToken(t *testing.T) {
-// 	a := loadTokenAgent(t)
-// 	ctx, cancel := context.WithCancel(context.Background())
-// 	defer cancel()
-
-// 	// Start attestation
-// 	agentStream, err := a.agentAttestorClient.AidAttestation(ctx)
-// 	a.require.NoError(err)
-
-// 	// Generate a challenge from the payload
-// 	agentResponse, err := agentStream.Recv()
-// 	a.require.NoError(err)
-
-// 	attestationData := new(k8s.PSATAttestationData)
-// 	err = json.Unmarshal(agentResponse.GetPayload(), attestationData)
-// 	a.require.NotEqual(a.token, attestationData.Token, "Expected token: %s got %s", a.token, attestationData.Token)
-// 	a.require.NoError(err)
-// }
-
 func TestConfig(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -263,7 +244,7 @@ func TestConfig(t *testing.T) {
 	}
 }
 
-func TestAidAttestation(t *testing.T) {
+func TestAidAttestationFailures(t *testing.T) {
 	tests := []struct {
 		name        string
 		tokenPath   string
@@ -272,17 +253,16 @@ func TestAidAttestation(t *testing.T) {
 		{
 			name:        "Wrong token path",
 			tokenPath:   "./tokenn",
-			expectedErr: "unable to load token from",
+			expectedErr: "unable to load token from ./tokenn",
 		},
 		{
 			name:        "Empty token",
 			tokenPath:   "./empty_token",
-			expectedErr: "unable to load token from",
+			expectedErr: `"./empty_token" is empty`,
 		},
 		{
 			name:        "Wrong token",
 			tokenPath:   "./wrongtoken",
-			expectedErr: "wrong token",
 		},
 	}
 
@@ -299,8 +279,9 @@ func TestAidAttestation(t *testing.T) {
 			// Generate a challenge from the payload
 			agentResponse, err := agentStream.Recv()
 			if test.expectedErr != "" {
+				a.require.NotNil(err)
 				a.require.Error(err)
-				a.require.Contains(err, test.expectedErr)
+				a.require.Contains(err.Error() , test.expectedErr)
 				return
 			}
 			a.require.NoError(err)
