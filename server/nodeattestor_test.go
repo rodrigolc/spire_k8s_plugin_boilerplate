@@ -2,23 +2,27 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	//common_devid "github.com/spiffe/spire/pkg/common/plugin/tpmdevid"
 	"testing"
+
+	"github.com/rodrigolc/psat-iid/pkg/common"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/spiffe/spire-plugin-sdk/pluginsdk"
 	"github.com/spiffe/spire-plugin-sdk/plugintest"
 	servernodeattestorv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/server/nodeattestor/v1"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
+	"github.com/spiffe/spire/pkg/common/plugin/k8s"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	authv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-
-	"github.com/rodrigolc/psat-iid/pkg/common"
 )
 
 func TestConfigError(t *testing.T) {
@@ -84,7 +88,6 @@ func TestConfigError(t *testing.T) {
 					TrustDomain: test.trustDomain,
 				},
 			})
-
 			a.require.Error(err)
 			a.require.Contains(err.Error(), test.expectedErr, "unexpected server configuration error")
 		})
@@ -92,6 +95,30 @@ func TestConfigError(t *testing.T) {
 }
 
 func TestAttestationSetupFail(t *testing.T) {
+	t.Run("Server not configured", func(t *testing.T) {
+		a := &attestorSuite{t: t}
+		a.require = require.New(t)
+
+		a.serverPlugin = new(Plugin)
+		a.serverAttestorClient = new(servernodeattestorv1.NodeAttestorPluginClient)
+		configClient := new(configv1.ConfigServiceClient)
+		plugintest.ServeInBackground(a.t, plugintest.Config{
+			PluginServer:   servernodeattestorv1.NodeAttestorPluginServer(a.serverPlugin),
+			PluginClient:   a.serverAttestorClient,
+			ServiceServers: []pluginsdk.ServiceServer{configv1.ConfigServiceServer(a.serverPlugin)},
+			ServiceClients: []pluginsdk.ServiceClient{configClient},
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		serverStream, err := a.serverAttestorClient.Attest(ctx)
+		a.require.NoError(err, "attest failed")
+		_, err = serverStream.Recv()
+
+		a.require.Error(err)
+		a.require.Contains(err.Error(), "rpc error: code = FailedPrecondition desc = not configured")
+	})
 	t.Run("Empty payload", func(t *testing.T) {
 		a := &attestorSuite{t: t}
 		a.require = require.New(t)
@@ -113,6 +140,334 @@ func TestAttestationSetupFail(t *testing.T) {
 		a.require.Error(err)
 		a.require.Contains(err.Error(), "rpc error: code = InvalidArgument desc = missing attestation payload")
 	})
+
+	t.Run("No Token in payload", func(t *testing.T) {
+		a := &attestorSuite{t: t}
+		a.require = require.New(t)
+		a.psatData = common.DefaultPSATData()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		serverStream, err := a.serverAttestorClient.Attest(ctx)
+		a.require.NoError(err, "attest failed")
+		_, err = serverStream.Recv()
+
+		a.require.Error(err)
+		a.require.Contains(err.Error(), "rpc error: code = FailedPrecondition desc = missing token in attestation data")
+	})
+}
+
+func TestAttestationFail(t *testing.T) {
+	a := &attestorSuite{t: t}
+	a.require = require.New(t)
+	a.psatData = common.DefaultPSATData()
+	a.createAndWriteToken()
+
+	tests := []struct {
+		name         string
+		psatData     *common.PSATData
+		attRequest   common.AttestationRequest
+		createMockFn func(*common.PSATData, string) *apiClientMock
+		badToken     bool
+		expectedErr  string
+	}{
+		{
+			name:         "Failed to unmarshal",
+			psatData:     common.DefaultPSATData(),
+			createMockFn: createAPIClientMock,
+			expectedErr:  `rpc error: code = InvalidArgument desc = missing cluster in attestation data`,
+		},
+		{
+			name:     "Missing token",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+				},
+			},
+			createMockFn: createAPIClientMock,
+			badToken:     true,
+			expectedErr:  `rpc error: code = InvalidArgument desc = missing token in attestation data`,
+		},
+		{
+			name:     "Failed to find configuration for provided cluster",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "foo",
+					Token:   a.token,
+				},
+			},
+			createMockFn: createAPIClientMock,
+			expectedErr:  `not configured for cluster "foo"`,
+		},
+		{
+			name:     "Invalid token",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   "Bad token",
+				},
+			},
+			createMockFn: createAPIClientMock,
+			badToken:     true,
+			expectedErr:  `rpc error: code = Internal desc = unable to validate token with TokenReview API`,
+		},
+		{
+			name:     "Missing namespace",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				return createAPIClientMock(&common.PSATData{
+					Namespace: "",
+				}, token)
+			},
+			expectedErr: `fail to parse username from token review status`,
+		},
+		{
+			name:     "Missing pod name",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				return createAPIClientMock(&common.PSATData{
+					PodName: "",
+				}, token)
+			},
+			expectedErr: `fail to parse username from token review status`,
+		},
+		{
+			name:     "Token not authenticated",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   a.token,
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				clientMock := createAPIClientMock(psatData, token)
+				clientMock.SetTokenStatus(token, createTokenStatus(psatData, false, defaultAudience))
+				return clientMock
+			},
+			expectedErr: `rpc error: code = PermissionDenied desc = token not authenticated according to TokenReview API`,
+		},
+		{
+			name:     "Failed to parse user from token",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   a.token,
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				clientMock := createAPIClientMock(psatData, token)
+				badTokenStatus := &authv1.TokenReviewStatus{
+					Authenticated: true,
+					User: authv1.UserInfo{
+						Extra: make(map[string]authv1.ExtraValue),
+					},
+					Audiences: defaultAudience,
+				}
+				clientMock.SetTokenStatus(token, badTokenStatus)
+				return clientMock
+			},
+			expectedErr: `rpc error: code = Internal desc = fail to parse username from token review status`,
+		},
+		{
+			name:     "Forbidden service account name",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   a.token,
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				return createAPIClientMock(&common.PSATData{
+					Namespace:          "NS2",
+					ServiceAccountName: "SA2",
+				}, token)
+			},
+			expectedErr: `"NS2:SA2" is not an allowed service account`,
+		},
+		{
+			name:     "Failed to get pod uid from token",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   a.token,
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				clientMock := createAPIClientMock(psatData, token)
+				clientMock.status[token].User.Extra["authentication.kubernetes.io/pod-uid"] = nil
+				return clientMock
+			},
+			expectedErr: "rpc error: code = Internal desc = fail to get pod UID from token review status",
+		},
+		{
+			name:     "Failed to get pod uid from token",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   a.token,
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				clientMock := &apiClientMock{
+					apiClientConfig: apiClientConfig{
+						status: make(map[string]*authv1.TokenReviewStatus),
+					},
+				}
+				clientMock.SetTokenStatus(token, createTokenStatus(psatData, true, defaultAudience))
+
+				return clientMock
+			},
+			expectedErr: "rpc error: code = Internal desc = fail to get pod from k8s API server",
+		},
+		{
+			name:     "Failed to get node",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   a.token,
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				clientMock := &apiClientMock{
+					apiClientConfig: apiClientConfig{
+						status: make(map[string]*authv1.TokenReviewStatus),
+					},
+				}
+				clientMock.SetTokenStatus(token, createTokenStatus(psatData, true, defaultAudience))
+
+				return clientMock
+			},
+			expectedErr: "rpc error: code = Internal desc = fail to get node from k8s API server",
+		},
+		{
+			name:     "Failed to get node uid from token",
+			psatData: common.DefaultPSATData(),
+			attRequest: common.AttestationRequest{
+				PSATAttestationData: k8s.PSATAttestationData{
+					Cluster: "FOO",
+					Token:   a.token,
+				},
+			},
+			createMockFn: func(psatData *common.PSATData, token string) *apiClientMock {
+				clientMock := createAPIClientMock(psatData, token)
+				clientMock.status[token].User.Extra["authentication.kubernetes.io/node-uid"] = nil
+				return clientMock
+			},
+			expectedErr: "rpc error: code = Internal desc = fail to get node UID from token review status",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Spin up server plugin
+			a.require.NoError(a.loadServerPlugin(), "failed to load server")
+			a.serverPlugin.config.clusters[a.psatData.Cluster].client = test.createMockFn(a.psatData, a.token)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Begin attestation
+			serverStream, err := a.serverAttestorClient.Attest(ctx)
+			a.require.NoError(err, "failed opening server Attest stream")
+
+			payload, err := json.Marshal(test.attRequest)
+			a.require.NoError(err, "failed to marshal testing payload")
+
+			// Send attestation payload to plugin
+			a.require.NoError(serverStream.Send(&servernodeattestorv1.AttestRequest{
+				Request: &servernodeattestorv1.AttestRequest_Payload{
+					Payload: payload,
+				},
+			}))
+			a.require.NoError(err, "failed to send attestation request to server")
+
+		})
+	}
+}
+
+/*
+func (a *attestorSuite) TestAttestSuccess() {
+	// Success with FOO signed token
+	a.apiServerClient.SetTokenStatus(token, createTokenStatus(tokenData, true, defaultAudience))
+	a.apiServerClient.SetPod(createPod("NS1", "PODNAME-1", "NODENAME-1", "172.16.10.1"))
+	a.apiServerClient.SetNode(createNode("NODENAME-1", "NODEUID-1"))
+
+	result, err := a.attestor.Attest(context.Background(), makePayload("FOO", token), expectNoChallenge)
+	a.Require().NoError(err)
+	a.Require().NotNil(result)
+	a.Require().Equal(result.AgentID, "spiffe://example.org/spire/agent/k8s_psat/FOO/NODEUID-1")
+	a.RequireProtoListEqual([]*common.Selector{
+		{Type: "k8s_psat", Value: "cluster:FOO"},
+		{Type: "k8s_psat", Value: "agent_ns:NS1"},
+		{Type: "k8s_psat", Value: "agent_sa:SA1"},
+		{Type: "k8s_psat", Value: "agent_pod_name:PODNAME-1"},
+		{Type: "k8s_psat", Value: "agent_pod_uid:PODUID-1"},
+		{Type: "k8s_psat", Value: "agent_node_ip:172.16.10.1"},
+		{Type: "k8s_psat", Value: "agent_node_name:NODENAME-1"},
+		{Type: "k8s_psat", Value: "agent_node_uid:NODEUID-1"},
+		{Type: "k8s_psat", Value: "agent_node_label:NODELABEL-B:B"},
+		{Type: "k8s_psat", Value: "agent_pod_label:PODLABEL-A:A"},
+	}, result.Selectors)
+
+	// Success with BAR signed token
+	tokenData = &TokenData{
+		namespace:          "NS2",
+		serviceAccountName: "SA2",
+		podName:            "PODNAME-2",
+		podUID:             "PODUID-2",
+	}
+	token = a.signToken(a.barSigner, tokenData)
+	a.apiServerClient.SetTokenStatus(token, createTokenStatus(tokenData, true, []string{"AUDIENCE"}))
+	a.apiServerClient.SetPod(createPod("NS2", "PODNAME-2", "NODENAME-2", "172.16.10.2"))
+	a.apiServerClient.SetNode(createNode("NODENAME-2", "NODEUID-2"))
+
+	// Success with BAR signed token
+	result, err = a.attestor.Attest(context.Background(), makePayload("BAR", token), expectNoChallenge)
+	a.Require().NoError(err)
+	a.Require().NotNil(result)
+	a.Require().Equal(result.AgentID, "spiffe://example.org/spire/agent/k8s_psat/BAR/NODEUID-2")
+	a.RequireProtoListEqual([]*common.Selector{
+		{Type: "k8s_psat", Value: "cluster:BAR"},
+		{Type: "k8s_psat", Value: "agent_ns:NS2"},
+		{Type: "k8s_psat", Value: "agent_sa:SA2"},
+		{Type: "k8s_psat", Value: "agent_pod_name:PODNAME-2"},
+		{Type: "k8s_psat", Value: "agent_pod_uid:PODUID-2"},
+		{Type: "k8s_psat", Value: "agent_node_ip:172.16.10.2"},
+		{Type: "k8s_psat", Value: "agent_node_name:NODENAME-2"},
+		{Type: "k8s_psat", Value: "agent_node_uid:NODEUID-2"},
+	}, result.Selectors)
+}
+*/
+func (a *attestorSuite) TestAttestFailsWithNoTokenInPayload() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	serverStream, err := a.serverAttestorClient.Attest(ctx)
+	a.require.NoError(err, "attest failed")
+	_, err = serverStream.Recv()
+
+	a.require.Error(err)
+	a.require.Contains(err.Error(), "rpc error: code = FailedPrecondition desc = missing token in attestation data")
 }
 
 type attestorSuite struct {
@@ -132,7 +487,6 @@ func (a *attestorSuite) loadServerPlugin() error {
 
 	a.serverAttestorClient = new(servernodeattestorv1.NodeAttestorPluginClient)
 	configClient := new(configv1.ConfigServiceClient)
-
 	plugintest.ServeInBackground(a.t, plugintest.Config{
 		PluginServer:   servernodeattestorv1.NodeAttestorPluginServer(a.serverPlugin),
 		PluginClient:   a.serverAttestorClient,
