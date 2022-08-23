@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	//common_devid "github.com/spiffe/spire/pkg/common/plugin/tpmdevid"
 	"testing"
 
@@ -100,6 +101,7 @@ func TestAttestationSetupFail(t *testing.T) {
 		a.require = require.New(t)
 
 		a.serverPlugin = new(Plugin)
+
 		a.serverAttestorClient = new(servernodeattestorv1.NodeAttestorPluginClient)
 		configClient := new(configv1.ConfigServiceClient)
 		plugintest.ServeInBackground(a.t, plugintest.Config{
@@ -113,12 +115,16 @@ func TestAttestationSetupFail(t *testing.T) {
 		defer cancel()
 
 		serverStream, err := a.serverAttestorClient.Attest(ctx)
-		a.require.NoError(err, "attest failed")
+		a.require.NoError(err)
+
+		err = serverStream.Send(&servernodeattestorv1.AttestRequest{})
+		a.require.NoError(err, "failed to send attestation request")
 		_, err = serverStream.Recv()
 
 		a.require.Error(err)
 		a.require.Contains(err.Error(), "rpc error: code = FailedPrecondition desc = not configured")
 	})
+
 	t.Run("Empty payload", func(t *testing.T) {
 		a := &attestorSuite{t: t}
 		a.require = require.New(t)
