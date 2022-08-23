@@ -4,23 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
-
+	
 	"github.com/spiffe/spire-plugin-sdk/pluginsdk"
 	"github.com/spiffe/spire-plugin-sdk/plugintest"
 	agentnodeattestorv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/agent/nodeattestor/v1"
 	nodeattestorv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/agent/nodeattestor/v1"
+	common "github.com/rodrigolc/spire_k8s_plugin_boilerplate/pkg/common"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
 	"github.com/spiffe/spire-plugin-sdk/templates/agent/nodeattestor"
-	"github.com/spiffe/spire/pkg/common/pemutil"
 	"github.com/spiffe/spire/pkg/common/plugin/k8s"
-	sat_common "github.com/spiffe/spire/pkg/common/plugin/k8s"
 	"github.com/spiffe/spire/test/spiretest"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 var sampleKeyPEM = []byte(`-----BEGIN RSA PRIVATE KEY-----
@@ -46,7 +42,7 @@ type attestorSuite struct {
 	agentAttestorClient *agentnodeattestorv1.NodeAttestorPluginClient
 	agentHCL            string
 
-	psatData  *k8s.PSATAttestationData
+	psatData  *common.PSATData
 	token     string
 	tokenPath string
 
@@ -88,8 +84,8 @@ func (a *attestorSuite) loadAgentPlugin(agentHLC string) error {
 
 func (a *attestorSuite) createAndWriteToken() {
 	var err error
-	dir := "/temp/token"
-	a.token, err = createPSAT(clusterName, podName)
+	dir := "/tmp/token"
+	a.token, err = common.CreatePSAT(clusterName, podName)
 	require.NoError(a.t, err)
 	a.tokenPath = dir
 }
@@ -97,7 +93,7 @@ func (a *attestorSuite) createAndWriteToken() {
 func loadAgent(t *testing.T) attestorSuite {
 	a := attestorSuite{
 		t: t,
-		//psatData: common.DefaultPSATData(),
+		psatData: common.DefaultPSATData(),
 		require: require.New(t),
 	}
 	a.createAndWriteToken()
@@ -108,7 +104,7 @@ func loadAgent(t *testing.T) attestorSuite {
 func loadTokenAgent(t *testing.T, tokenPath string) attestorSuite {
 	a := attestorSuite{
 		t: t,
-		//psatData: common.DefaultPSATData(),
+		psatData: common.DefaultPSATData(),
 		require: require.New(t),
 	}
 	a.createAndWriteToken()
@@ -116,60 +112,8 @@ func loadTokenAgent(t *testing.T, tokenPath string) attestorSuite {
 	return a
 }
 
-// Creates a PSAT using the given namespace and podName (just for testing)
-func createPSAT(namespace, podName string) (string, error) {
-	// Create a jwt builder
-	s, err := createSigner()
-	if err != nil {
-		return "", err
-	}
-
-	builder := jwt.Signed(s)
-
-	// Set useful claims for testing
-	claims := sat_common.PSATClaims{}
-	claims.K8s.Namespace = namespace
-	claims.K8s.Pod.Name = podName
-	builder = builder.Claims(claims)
-
-	// Serialize and return token
-	token, err := builder.CompactSerialize()
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
-}
-
-func createSigner() (jose.Signer, error) {
-	sampleKey, err := pemutil.ParseRSAPrivateKey(sampleKeyPEM)
-	if err != nil {
-		return nil, err
-	}
-
-	sampleSigner, err := jose.NewSigner(jose.SigningKey{
-		Algorithm: jose.RS256,
-		Key:       sampleKey,
-	}, nil)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return sampleSigner, nil
-}
-
 func (s *AttestorSuite) joinPath(path string) string {
 	return filepath.Join(s.dir, path)
-}
-
-func (s *AttestorSuite) writeValue(path, data string) string {
-	valuePath := s.joinPath(path)
-	err := os.MkdirAll(filepath.Dir(valuePath), 0755)
-	s.Require().NoError(err)
-	err = os.WriteFile(valuePath, []byte(data), 0600)
-	s.Require().NoError(err)
-	return valuePath
 }
 
 type AttestorSuite struct {
@@ -227,7 +171,6 @@ func TestConfig(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			a := &attestorSuite{
-				//psatData: test.psatData,
 				t:        t,
 				require:  require.New(t),
 				agentHCL: test.agentHclConfig,

@@ -31,7 +31,6 @@ var (
 )
 
 // Config defines the configuration for the plugin.
-// TODO: Add relevant configurables or remove if no configuration is required.
 type Config struct {
 	Cluster   string `hcl:"cluster"`
 	TokenPath string `hcl:"token_path"`
@@ -115,7 +114,6 @@ func (p *Plugin) Configure(ctx context.Context, req *configv1.ConfigureRequest) 
 		return nil, status.Error(codes.InvalidArgument, "configuration missing cluster")
 	}
 
-	// TODO: Validate configuration before setting/replacing existing
 	// configuration
 	p.logger.Info("Configure", "config", config)
 
