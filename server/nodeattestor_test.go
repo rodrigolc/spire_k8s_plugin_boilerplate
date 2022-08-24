@@ -146,22 +146,6 @@ func TestAttestationSetupFail(t *testing.T) {
 		a.require.Error(err)
 		a.require.Contains(err.Error(), "rpc error: code = InvalidArgument desc = missing attestation payload")
 	})
-
-	t.Run("No Token in payload", func(t *testing.T) {
-		a := &attestorSuite{t: t}
-		a.require = require.New(t)
-		a.psatData = common.DefaultPSATData()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		serverStream, err := a.serverAttestorClient.Attest(ctx)
-		a.require.NoError(err, "attest failed")
-		_, err = serverStream.Recv()
-
-		a.require.Error(err)
-		a.require.Contains(err.Error(), "rpc error: code = FailedPrecondition desc = missing token in attestation data")
-	})
 }
 
 func TestAttestationFail(t *testing.T) {
@@ -464,18 +448,6 @@ func (a *attestorSuite) TestAttestSuccess() {
 	}, result.Selectors)
 }
 */
-func (a *attestorSuite) TestAttestFailsWithNoTokenInPayload() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	serverStream, err := a.serverAttestorClient.Attest(ctx)
-	a.require.NoError(err, "attest failed")
-	_, err = serverStream.Recv()
-
-	a.require.Error(err)
-	a.require.Contains(err.Error(), "rpc error: code = FailedPrecondition desc = missing token in attestation data")
-}
-
 type attestorSuite struct {
 	serverPlugin         *Plugin
 	serverAttestorClient *servernodeattestorv1.NodeAttestorPluginClient
