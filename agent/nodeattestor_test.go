@@ -10,7 +10,6 @@ import (
 	"github.com/spiffe/spire-plugin-sdk/pluginsdk"
 	"github.com/spiffe/spire-plugin-sdk/plugintest"
 	agentnodeattestorv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/agent/nodeattestor/v1"
-	nodeattestorv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/plugin/agent/nodeattestor/v1"
 	common "github.com/rodrigolc/spire_k8s_plugin_boilerplate/pkg/common"
 	configv1 "github.com/spiffe/spire-plugin-sdk/proto/spire/service/common/config/v1"
 	"github.com/spiffe/spire-plugin-sdk/templates/agent/nodeattestor"
@@ -18,19 +17,6 @@ import (
 	"github.com/spiffe/spire/test/spiretest"
 	"github.com/stretchr/testify/require"
 )
-
-var sampleKeyPEM = []byte(`-----BEGIN RSA PRIVATE KEY-----
-MIIBywIBAAJhAMB4gbT09H2RKXaxbu6IV9C3WY+pvkGAbrlQRIHLHwV3Xt1HchjX
-c08v1VEoTBN2YTjhZJlDb/VUsNMJsmBFBBted5geRcbrDtXFlUJ8tQoQx1dWM4Aa
-xcdULJ83A9ICKwIDAQABAmBR1asInrIphYQEtHJ/NzdnRd3tqHV9cjch0dAfA5dA
-Ar4yBYOsrkaX37WqWSDnkYgN4FWYBWn7WxeotCtA5UQ3SM5hLld67rUqAm2dLrs1
-z8va6SwLzrPTu2+rmRgovFECMQDpbfPBRex7FY/xWu1pYv6X9XZ26SrC2Wc6RIpO
-38AhKGjTFEMAPJQlud4e2+4I3KkCMQDTFLUvBSXokw2NvcNiM9Kqo5zCnCIkgc+C
-hM3EzSh2jh4gZvRzPOhXYvNKgLx8+LMCMQDL4meXlpV45Fp3eu4GsJqi65jvP7VD
-v1P0hs0vGyvbSkpUo0vqNv9G/FNQLNR6FRECMFXEMz5wxA91OOuf8HTFg9Lr+fUl
-RcY5rJxm48kUZ12Mr3cQ/kCYvftL7HkYR/4rewIxANdritlIPu4VziaEhYZg7dvz
-pG3eEhiqPxE++QHpwU78O+F1GznOPBvpZOB3GfyjNQ==
------END RSA PRIVATE KEY-----`)
 
 const (
 		podName = "MYPOD"
@@ -248,7 +234,7 @@ func Test(t *testing.T) {
 	// TODO: Provide host service server implementations if required by the
 	// plugin.
 	plugintest.ServeInBackground(t, plugintest.Config{
-		PluginServer: nodeattestorv1.NodeAttestorPluginServer(plugin),
+		PluginServer: agentnodeattestorv1.NodeAttestorPluginServer(plugin),
 		PluginClient: naClient,
 		ServiceServers: []pluginsdk.ServiceServer{
 			configv1.ConfigServiceServer(plugin),
