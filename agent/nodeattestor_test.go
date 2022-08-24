@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"testing"
 	
 	"github.com/spiffe/spire-plugin-sdk/pluginsdk"
@@ -96,10 +95,6 @@ func loadTokenAgent(t *testing.T, tokenPath string) attestorSuite {
 	a.createAndWriteToken()
 	a.require.NoError(a.loadAgentPlugin(fmt.Sprintf(`token_path = "%s" cluster = "FOO"`, tokenPath)))
 	return a
-}
-
-func (s *AttestorSuite) joinPath(path string) string {
-	return filepath.Join(s.dir, path)
 }
 
 type AttestorSuite struct {
