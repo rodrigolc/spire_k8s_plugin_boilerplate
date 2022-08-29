@@ -395,59 +395,42 @@ func TestAttestationFail(t *testing.T) {
 	}
 }
 
-/*
-func (a *attestorSuite) TestAttestSuccess() {
+func TestAttestSuccess(t *testing.T) {
+	a := &attestorSuite{t: t}
+	a.require = require.New(t)
+	a.psatData = common.DefaultPSATData()
+	a.createAndWriteToken()
+	a.require.NoError(a.loadServerPlugin())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// load and configure server
+	s := new(Plugin)
+	serverAttestorClient := new(servernodeattestorv1.NodeAttestorPluginClient)
+	serverConfigClient := new(configv1.ConfigServiceClient)
+	plugintest.ServeInBackground(t, plugintest.Config{
+		PluginServer:   servernodeattestorv1.NodeAttestorPluginServer(s),
+		PluginClient:   serverAttestorClient,
+		ServiceServers: []pluginsdk.ServiceServer{configv1.ConfigServiceServer(s)},
+		ServiceClients: []pluginsdk.ServiceClient{serverConfigClient},
+	})
 	// Success with FOO signed token
-	a.apiServerClient.SetTokenStatus(token, createTokenStatus(tokenData, true, defaultAudience))
-	a.apiServerClient.SetPod(createPod("NS1", "PODNAME-1", "NODENAME-1", "172.16.10.1"))
-	a.apiServerClient.SetNode(createNode("NODENAME-1", "NODEUID-1"))
+	//a.apiServerClient.SetTokenStatus(token, createTokenStatus(tokenData, true, defaultAudience))
+	//a.apiServerClient.SetPod(createPod("NS1", "PODNAME-1", "NODENAME-1", "172.16.10.1"))
+	//a.apiServerClient.SetNode(createNode("NODENAME-1", "NODEUID-1"))
 
-	result, err := a.attestor.Attest(context.Background(), makePayload("FOO", token), expectNoChallenge)
-	a.Require().NoError(err)
-	a.Require().NotNil(result)
-	a.Require().Equal(result.AgentID, "spiffe://example.org/spire/agent/k8s_psat/FOO/NODEUID-1")
-	a.RequireProtoListEqual([]*common.Selector{
-		{Type: "k8s_psat", Value: "cluster:FOO"},
-		{Type: "k8s_psat", Value: "agent_ns:NS1"},
-		{Type: "k8s_psat", Value: "agent_sa:SA1"},
-		{Type: "k8s_psat", Value: "agent_pod_name:PODNAME-1"},
-		{Type: "k8s_psat", Value: "agent_pod_uid:PODUID-1"},
-		{Type: "k8s_psat", Value: "agent_node_ip:172.16.10.1"},
-		{Type: "k8s_psat", Value: "agent_node_name:NODENAME-1"},
-		{Type: "k8s_psat", Value: "agent_node_uid:NODEUID-1"},
-		{Type: "k8s_psat", Value: "agent_node_label:NODELABEL-B:B"},
-		{Type: "k8s_psat", Value: "agent_pod_label:PODLABEL-A:A"},
-	}, result.Selectors)
+	result, err := a.serverAttestorClient.Attest(ctx)
+	a.require.NoError(err)
 
-	// Success with BAR signed token
-	tokenData = &TokenData{
-		namespace:          "NS2",
-		serviceAccountName: "SA2",
-		podName:            "PODNAME-2",
-		podUID:             "PODUID-2",
-	}
-	token = a.signToken(a.barSigner, tokenData)
-	a.apiServerClient.SetTokenStatus(token, createTokenStatus(tokenData, true, []string{"AUDIENCE"}))
-	a.apiServerClient.SetPod(createPod("NS2", "PODNAME-2", "NODENAME-2", "172.16.10.2"))
-	a.apiServerClient.SetNode(createNode("NODENAME-2", "NODEUID-2"))
+	err = result.Send(&servernodeattestorv1.AttestRequest{})
+	a.require.NoError(err, "failed to send attestation request")
+	_, err = result.Recv()
 
-	// Success with BAR signed token
-	result, err = a.attestor.Attest(context.Background(), makePayload("BAR", token), expectNoChallenge)
-	a.Require().NoError(err)
-	a.Require().NotNil(result)
-	a.Require().Equal(result.AgentID, "spiffe://example.org/spire/agent/k8s_psat/BAR/NODEUID-2")
-	a.RequireProtoListEqual([]*common.Selector{
-		{Type: "k8s_psat", Value: "cluster:BAR"},
-		{Type: "k8s_psat", Value: "agent_ns:NS2"},
-		{Type: "k8s_psat", Value: "agent_sa:SA2"},
-		{Type: "k8s_psat", Value: "agent_pod_name:PODNAME-2"},
-		{Type: "k8s_psat", Value: "agent_pod_uid:PODUID-2"},
-		{Type: "k8s_psat", Value: "agent_node_ip:172.16.10.2"},
-		{Type: "k8s_psat", Value: "agent_node_name:NODENAME-2"},
-		{Type: "k8s_psat", Value: "agent_node_uid:NODEUID-2"},
-	}, result.Selectors)
+	a.require.Error(err)
+	a.require.NotNil(result)
 }
-*/
+
 type attestorSuite struct {
 	serverPlugin         *Plugin
 	serverAttestorClient *servernodeattestorv1.NodeAttestorPluginClient
