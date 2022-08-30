@@ -1,4 +1,4 @@
-module github.com/rodrigolc/psat-iid
+module github.com/rodrigolc/spire_k8s_plugin_boilerplate
 
 go 1.17
 
